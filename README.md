@@ -6,7 +6,7 @@ converts a `.pdf` presentation into a "fake" `.pptx` by rendering each page as a
 
 output slides are **not editable**, this is intentional. 
 
-the goal is just to get a pdf into pptx format for corporate compliance purposes (e.g. sending to someone who **needs** a .pptx and would crazy if it's not sent with an extension that says • P P T X).
+the goal is just to get a pdf into pptx format for corporate compliance purposes (e.g., when someone absolutely **NEEDS** a `.pptx` and would go crazy if the file is not sent with an extension that says **• P P T X**).
 
 https://github.com/user-attachments/assets/649b6259-9c86-49fd-bba5-4431f051e82a
 
