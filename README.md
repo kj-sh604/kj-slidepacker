@@ -37,7 +37,7 @@ pip install -r requirements.txt
 ./src/slidepacker deck.pdf --dpi 200
 ```
 
-## as a libr
+## as a lib
 
 ```python
 import sys
