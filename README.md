@@ -35,6 +35,9 @@ pip install -r requirements.txt
 
 # set render resolution (default: 150 dpi)
 ./src/slidepacker deck.pdf --dpi 200
+
+# stack all pages on one slide and click through with no animation delay
+./src/slidepacker deck.pdf -1
 ```
 
 ## as a lib
@@ -45,6 +48,9 @@ sys.path.insert(0, "path/to/kj-slidepacker/src")
 
 import slidepacker
 slidepacker.pack("deck.pdf", "deck.pptx", dpi=200)
+
+# one-slide click-through mode
+slidepacker.pack("deck.pdf", "deck.pptx", dpi=200, one_slide=True)
 ```
 
 ## license

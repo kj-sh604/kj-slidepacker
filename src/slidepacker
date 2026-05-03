@@ -10,17 +10,116 @@ import sys
 
 import fitz  # this is actually pymupdf
 from pptx import Presentation
+from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Emu
 
 
+def _add_click_hide_timing(slide, shape_ids):
+    """add click animations that hide each shape id in order."""
+    if not shape_ids:
+        return
+
+    ctn_id = 1
+
+    def next_ctn(**attrs):
+        nonlocal ctn_id
+        ctn = OxmlElement("p:cTn")
+        ctn.set("id", str(ctn_id))
+        ctn_id += 1
+        for key, value in attrs.items():
+            ctn.set(key, str(value))
+        return ctn
+
+    timing = OxmlElement("p:timing")
+    tn_lst = OxmlElement("p:tnLst")
+    timing.append(tn_lst)
+
+    root_par = OxmlElement("p:par")
+    tn_lst.append(root_par)
+    root_ctn = next_ctn(dur="indefinite", restart="never", nodeType="tmRoot")
+    root_par.append(root_ctn)
+
+    root_child_tn_lst = OxmlElement("p:childTnLst")
+    root_ctn.append(root_child_tn_lst)
+    seq = OxmlElement("p:seq")
+    seq.set("concurrent", "1")
+    seq.set("nextAc", "seek")
+    root_child_tn_lst.append(seq)
+
+    main_seq = next_ctn(dur="indefinite", nodeType="mainSeq")
+    seq.append(main_seq)
+    main_child_tn_lst = OxmlElement("p:childTnLst")
+    main_seq.append(main_child_tn_lst)
+
+    next_cond_lst = OxmlElement("p:nextCondLst")
+    next_cond = OxmlElement("p:cond")
+    next_cond.set("evt", "onNext")
+    next_cond.set("delay", "0")
+    next_cond_lst.append(next_cond)
+    seq.append(next_cond_lst)
+
+    for shape_id in shape_ids:
+        click_par = OxmlElement("p:par")
+        main_child_tn_lst.append(click_par)
+
+        click_ctn = next_ctn(fill="hold")
+        click_par.append(click_ctn)
+
+        st_cond_lst = OxmlElement("p:stCondLst")
+        st_cond = OxmlElement("p:cond")
+        st_cond.set("delay", "indefinite")
+        st_cond_lst.append(st_cond)
+        click_ctn.append(st_cond_lst)
+
+        click_child_tn_lst = OxmlElement("p:childTnLst")
+        click_ctn.append(click_child_tn_lst)
+
+        set_op = OxmlElement("p:set")
+        click_child_tn_lst.append(set_op)
+
+        c_bhvr = OxmlElement("p:cBhvr")
+        set_op.append(c_bhvr)
+
+        behavior_ctn = next_ctn(dur="1", fill="hold")
+        c_bhvr.append(behavior_ctn)
+
+        tgt_el = OxmlElement("p:tgtEl")
+        sp_tgt = OxmlElement("p:spTgt")
+        sp_tgt.set("spid", str(shape_id))
+        tgt_el.append(sp_tgt)
+        c_bhvr.append(tgt_el)
+
+        attr_name_lst = OxmlElement("p:attrNameLst")
+        attr_name = OxmlElement("p:attrName")
+        attr_name.text = "style.visibility"
+        attr_name_lst.append(attr_name)
+        c_bhvr.append(attr_name_lst)
+
+        to = OxmlElement("p:to")
+        str_val = OxmlElement("p:strVal")
+        str_val.set("val", "hidden")
+        to.append(str_val)
+        set_op.append(to)
+
+    sld = slide._element
+    insert_at = len(sld)
+    for i, child in enumerate(sld):
+        if child.tag == qn("p:extLst"):
+            insert_at = i
+            break
+    sld.insert(insert_at, timing)
+
+
 # core conversion
-def pack(pdf_path, output_path=None, dpi=150):
+def pack(pdf_path, output_path=None, dpi=150, one_slide=False):
     """convert a pdf to a pptx where each slide is a rendered page image.
 
     args:
         pdf_path:    path to the input pdf
         output_path: path for the output pptx (default: same stem as pdf)
         dpi:         render resolution (default: 150)
+        one_slide:   if true, stack all pages on one slide with click animations
 
     returns:
         the output path as a string
@@ -29,34 +128,56 @@ def pack(pdf_path, output_path=None, dpi=150):
         base = os.path.splitext(pdf_path)[0]
         output_path = base + ".pptx"
 
-    doc = fitz.open(pdf_path)
     prs = Presentation()
 
-    # match slide dimensions to the first page
-    # fitz uses points (1pt = 1/72 inch), pptx uses emu (914400 emu/inch)
-    if len(doc) > 0:
-        rect = doc[0].rect
-        prs.slide_width = Emu(int(rect.width / 72 * 914400))
-        prs.slide_height = Emu(int(rect.height / 72 * 914400))
+    with fitz.open(pdf_path) as doc:
+        # match slide dimensions to the first page
+        # fitz uses points (1pt = 1/72 inch), pptx uses emu (914400 emu/inch)
+        if len(doc) > 0:
+            rect = doc[0].rect
+            prs.slide_width = Emu(int(rect.width / 72 * 914400))
+            prs.slide_height = Emu(int(rect.height / 72 * 914400))
 
-    blank_layout = prs.slide_layouts[6]  # blank slide - no placeholders
-    mat = fitz.Matrix(dpi / 72, dpi / 72)
+        blank_layout = prs.slide_layouts[6]  # blank slide - no placeholders
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
 
-    for page in doc:
-        pix = page.get_pixmap(matrix=mat)
-        img_stream = io.BytesIO(pix.tobytes("png"))
+        if one_slide and len(doc) > 0:
+            slide = prs.slides.add_slide(blank_layout)
+            page_to_shape_id = {}
 
-        slide = prs.slides.add_slide(blank_layout)
-        slide.shapes.add_picture(
-            img_stream,
-            left=Emu(0),
-            top=Emu(0),
-            width=prs.slide_width,
-            height=prs.slide_height,
-        )
+            # reverse stack so page 1 is on top and clicks reveal next pages
+            for page_index in range(len(doc) - 1, -1, -1):
+                page = doc[page_index]
+                pix = page.get_pixmap(matrix=mat)
+                img_stream = io.BytesIO(pix.tobytes("png"))
+
+                picture = slide.shapes.add_picture(
+                    img_stream,
+                    left=Emu(0),
+                    top=Emu(0),
+                    width=prs.slide_width,
+                    height=prs.slide_height,
+                )
+                page_to_shape_id[page_index] = picture.shape_id
+
+            # hide pages 1..n-1 in order, leaving the final page visible
+            hide_order = [page_to_shape_id[i] for i in range(len(doc) - 1)]
+            _add_click_hide_timing(slide, hide_order)
+        else:
+            for page in doc:
+                pix = page.get_pixmap(matrix=mat)
+                img_stream = io.BytesIO(pix.tobytes("png"))
+
+                slide = prs.slides.add_slide(blank_layout)
+                slide.shapes.add_picture(
+                    img_stream,
+                    left=Emu(0),
+                    top=Emu(0),
+                    width=prs.slide_width,
+                    height=prs.slide_height,
+                )
 
     prs.save(output_path)
-    doc.close()
     return output_path
 
 
@@ -81,6 +202,13 @@ def main():
         metavar="N",
         help="render resolution in dpi (default: 150)",
     )
+    parser.add_argument(
+        "-1",
+        "--one-slide",
+        action="store_true",
+        dest="one_slide",
+        help="stack all pages on one slide and click through with animations",
+    )
     args = parser.parse_args()
 
     if not os.path.isfile(args.pdf):
@@ -91,7 +219,7 @@ def main():
         print(f"[!] error: not a pdf file: {args.pdf}", file=sys.stderr)
         sys.exit(1)
 
-    result = pack(args.pdf, args.output, dpi=args.dpi)
+    result = pack(args.pdf, args.output, dpi=args.dpi, one_slide=args.one_slide)
     print(f"[+] saved: {result}")
 
 
