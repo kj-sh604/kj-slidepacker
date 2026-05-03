@@ -15,6 +15,16 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Emu
 
 
+DEFAULT_DPI = 100
+DEFAULT_JPEG_QUALITY = 98
+
+
+def _page_to_jpeg_stream(page, mat, jpeg_quality):
+    """render one pdf page to a jpeg byte stream."""
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+    return io.BytesIO(pix.tobytes("jpg", jpg_quality=jpeg_quality))
+
+
 def _add_click_hide_timing(slide, shape_ids):
     """add click animations that hide each shape id in order."""
     if not shape_ids:
@@ -112,14 +122,21 @@ def _add_click_hide_timing(slide, shape_ids):
 
 
 # core conversion
-def pack(pdf_path, output_path=None, dpi=150, one_slide=False):
+def pack(
+    pdf_path,
+    output_path=None,
+    dpi=DEFAULT_DPI,
+    one_slide=False,
+    jpeg_quality=DEFAULT_JPEG_QUALITY,
+):
     """convert a pdf to a pptx where each slide is a rendered page image.
 
     args:
         pdf_path:    path to the input pdf
         output_path: path for the output pptx (default: same stem as pdf)
-        dpi:         render resolution (default: 150)
+        dpi:         render resolution (default: 100)
         one_slide:   if true, stack all pages on one slide with click animations
+        jpeg_quality: jpeg quality from 1..100 (default: 98)
 
     returns:
         the output path as a string
@@ -127,6 +144,9 @@ def pack(pdf_path, output_path=None, dpi=150, one_slide=False):
     if output_path is None:
         base = os.path.splitext(pdf_path)[0]
         output_path = base + ".pptx"
+
+    if not 1 <= jpeg_quality <= 100:
+        raise ValueError("jpeg_quality must be between 1 and 100")
 
     prs = Presentation()
 
@@ -148,8 +168,7 @@ def pack(pdf_path, output_path=None, dpi=150, one_slide=False):
             # reverse stack so page 1 is on top and clicks reveal next pages
             for page_index in range(len(doc) - 1, -1, -1):
                 page = doc[page_index]
-                pix = page.get_pixmap(matrix=mat)
-                img_stream = io.BytesIO(pix.tobytes("png"))
+                img_stream = _page_to_jpeg_stream(page, mat, jpeg_quality)
 
                 picture = slide.shapes.add_picture(
                     img_stream,
@@ -165,8 +184,7 @@ def pack(pdf_path, output_path=None, dpi=150, one_slide=False):
             _add_click_hide_timing(slide, hide_order)
         else:
             for page in doc:
-                pix = page.get_pixmap(matrix=mat)
-                img_stream = io.BytesIO(pix.tobytes("png"))
+                img_stream = _page_to_jpeg_stream(page, mat, jpeg_quality)
 
                 slide = prs.slides.add_slide(blank_layout)
                 slide.shapes.add_picture(
@@ -198,9 +216,16 @@ def main():
     parser.add_argument(
         "--dpi",
         type=int,
-        default=150,
+        default=DEFAULT_DPI,
         metavar="N",
-        help="render resolution in dpi (default: 150)",
+        help=f"render resolution in dpi (default: {DEFAULT_DPI})",
+    )
+    parser.add_argument(
+        "--jpeg-quality",
+        type=int,
+        default=DEFAULT_JPEG_QUALITY,
+        metavar="N",
+        help=f"jpeg quality 1..100 (default: {DEFAULT_JPEG_QUALITY})",
     )
     parser.add_argument(
         "-1",
@@ -219,7 +244,17 @@ def main():
         print(f"[!] error: not a pdf file: {args.pdf}", file=sys.stderr)
         sys.exit(1)
 
-    result = pack(args.pdf, args.output, dpi=args.dpi, one_slide=args.one_slide)
+    if not 1 <= args.jpeg_quality <= 100:
+        print("[!] error: --jpeg-quality must be between 1 and 100", file=sys.stderr)
+        sys.exit(1)
+
+    result = pack(
+        args.pdf,
+        args.output,
+        dpi=args.dpi,
+        one_slide=args.one_slide,
+        jpeg_quality=args.jpeg_quality,
+    )
     print(f"[+] saved: {result}")
 
 

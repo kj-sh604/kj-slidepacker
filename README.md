@@ -33,8 +33,11 @@ pip install -r requirements.txt
 # specify output path
 ./src/slidepacker deck.pdf out.pptx
 
-# set render resolution (default: 150 dpi)
+# set render resolution (default: 100 dpi)
 ./src/slidepacker deck.pdf --dpi 200
+
+# tune jpeg quality (default: 98)
+./src/slidepacker deck.pdf --jpeg-quality 100
 
 # stack all pages on one slide and click through with no animation delay
 ./src/slidepacker deck.pdf -1
@@ -48,6 +51,9 @@ sys.path.insert(0, "path/to/kj-slidepacker/src")
 
 import slidepacker
 slidepacker.pack("deck.pdf", "deck.pptx", dpi=200)
+
+# lower quality for smaller files
+slidepacker.pack("deck.pdf", "deck.pptx", dpi=200, jpeg_quality=90)
 
 # one-slide click-through mode
 slidepacker.pack("deck.pdf", "deck.pptx", dpi=200, one_slide=True)
