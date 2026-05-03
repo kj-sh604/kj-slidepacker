@@ -33,7 +33,7 @@ pip install -r requirements.txt
 # specify output path
 ./src/slidepacker deck.pdf out.pptx
 
-# set render resolution (default: 100 dpi)
+# set render resolution (defaults: 150 dpi standard, 100 dpi with -1)
 ./src/slidepacker deck.pdf --dpi 200
 
 # tune jpeg quality (default: 98)
