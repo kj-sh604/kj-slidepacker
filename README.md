@@ -43,7 +43,7 @@ pip install -r requirements.txt
 ./src/slidepacker deck.pdf -1
 ```
 
-## as a lib
+## as a python library
 
 ```python
 import sys
