@@ -8,7 +8,7 @@ output slides are **not editable**, this is intentional.
 
 the goal is just to get a pdf into pptx format for corporate compliance purposes (e.g., when someone absolutely **NEEDS** a `.pptx` and would go crazy if the file is not sent with an extension that says **• P P T X**).
 
-https://github.com/user-attachments/assets/649b6259-9c86-49fd-bba5-4431f051e82a
+https://github.com/user-attachments/assets/b2c69017-33f5-4f25-b681-b9534c0cdf2e
 
 ## deps
 
