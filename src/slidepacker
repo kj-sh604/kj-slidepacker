@@ -33,14 +33,26 @@ def _add_click_hide_timing(slide, shape_ids):
 
     ctn_id = 1
 
+    def _new(tag, **attrs):
+        el = OxmlElement(tag)
+        for key, value in attrs.items():
+            el.set(key, str(value))
+        return el
+
     def next_ctn(**attrs):
         nonlocal ctn_id
-        ctn = OxmlElement("p:cTn")
-        ctn.set("id", str(ctn_id))
+        ctn = _new("p:cTn", id=ctn_id)
         ctn_id += 1
         for key, value in attrs.items():
             ctn.set(key, str(value))
         return ctn
+
+    def _slide_cond(evt):
+        cond = _new("p:cond", evt=evt, delay=0)
+        tgt_el = OxmlElement("p:tgtEl")
+        tgt_el.append(OxmlElement("p:sldTgt"))
+        cond.append(tgt_el)
+        return cond
 
     timing = OxmlElement("p:timing")
     tn_lst = OxmlElement("p:tnLst")
@@ -63,36 +75,72 @@ def _add_click_hide_timing(slide, shape_ids):
     main_child_tn_lst = OxmlElement("p:childTnLst")
     main_seq.append(main_child_tn_lst)
 
+    prev_cond_lst = OxmlElement("p:prevCondLst")
+    prev_cond_lst.append(_slide_cond("onPrev"))
+    seq.append(prev_cond_lst)
+
     next_cond_lst = OxmlElement("p:nextCondLst")
-    next_cond = OxmlElement("p:cond")
-    next_cond.set("evt", "onNext")
-    next_cond.set("delay", "0")
-    next_cond_lst.append(next_cond)
+    next_cond_lst.append(_slide_cond("onNext"))
     seq.append(next_cond_lst)
 
     for shape_id in shape_ids:
-        click_par = OxmlElement("p:par")
-        main_child_tn_lst.append(click_par)
+        # keep a 3-level p:par/p:cTn nesting - this matches clickEffect
+        # structures PowerPoint for Windows reliably accepts.
+        click_root_par = OxmlElement("p:par")
+        main_child_tn_lst.append(click_root_par)
 
-        click_ctn = next_ctn(fill="hold")
-        click_par.append(click_ctn)
+        click_root_ctn = next_ctn(fill="hold")
+        click_root_par.append(click_root_ctn)
 
-        st_cond_lst = OxmlElement("p:stCondLst")
-        st_cond = OxmlElement("p:cond")
-        st_cond.set("delay", "indefinite")
-        st_cond_lst.append(st_cond)
-        click_ctn.append(st_cond_lst)
+        click_root_st_cond_lst = OxmlElement("p:stCondLst")
+        click_root_st_cond_lst.append(_new("p:cond", delay="indefinite"))
+        click_root_ctn.append(click_root_st_cond_lst)
 
-        click_child_tn_lst = OxmlElement("p:childTnLst")
-        click_ctn.append(click_child_tn_lst)
+        click_root_child_tn_lst = OxmlElement("p:childTnLst")
+        click_root_ctn.append(click_root_child_tn_lst)
+
+        click_mid_par = OxmlElement("p:par")
+        click_root_child_tn_lst.append(click_mid_par)
+
+        click_mid_ctn = next_ctn(fill="hold")
+        click_mid_par.append(click_mid_ctn)
+
+        click_mid_st_cond_lst = OxmlElement("p:stCondLst")
+        click_mid_st_cond_lst.append(_new("p:cond", delay=0))
+        click_mid_ctn.append(click_mid_st_cond_lst)
+
+        click_mid_child_tn_lst = OxmlElement("p:childTnLst")
+        click_mid_ctn.append(click_mid_child_tn_lst)
+
+        click_effect_par = OxmlElement("p:par")
+        click_mid_child_tn_lst.append(click_effect_par)
+
+        click_effect_ctn = next_ctn(
+            fill="hold",
+            nodeType="clickEffect",
+            presetClass="exit",
+            presetID=1,
+            presetSubtype=0,
+        )
+        click_effect_par.append(click_effect_ctn)
+
+        click_effect_st_cond_lst = OxmlElement("p:stCondLst")
+        click_effect_st_cond_lst.append(_new("p:cond", delay=0))
+        click_effect_ctn.append(click_effect_st_cond_lst)
+
+        click_effect_child_tn_lst = OxmlElement("p:childTnLst")
+        click_effect_ctn.append(click_effect_child_tn_lst)
 
         set_op = OxmlElement("p:set")
-        click_child_tn_lst.append(set_op)
+        click_effect_child_tn_lst.append(set_op)
 
         c_bhvr = OxmlElement("p:cBhvr")
         set_op.append(c_bhvr)
 
-        behavior_ctn = next_ctn(dur="1", fill="hold")
+        behavior_ctn = next_ctn(dur=1, fill="hold")
+        behavior_st_cond_lst = OxmlElement("p:stCondLst")
+        behavior_st_cond_lst.append(_new("p:cond", delay=0))
+        behavior_ctn.append(behavior_st_cond_lst)
         c_bhvr.append(behavior_ctn)
 
         tgt_el = OxmlElement("p:tgtEl")
@@ -114,6 +162,10 @@ def _add_click_hide_timing(slide, shape_ids):
         set_op.append(to)
 
     sld = slide._element
+    existing_timing = sld.find(qn("p:timing"))
+    if existing_timing is not None:
+        sld.remove(existing_timing)
+
     insert_at = len(sld)
     for i, child in enumerate(sld):
         if child.tag == qn("p:extLst"):
